@@ -1,100 +1,25 @@
-# import the necessary libraries
 import argparse
 import datetime
 import json
 import os
 import re
-import shutil
 
 import openai
 
-COMMANDS_DICT = {
-	# Conversation Commands
-	"conv.ls": [],
-	"conv.load": ["name"],
-	"conv.save": ["name"],
-
-	# File System (fs) Commands
-	"fs.cat": ["path"],
-	"fs.cp": ["src", "dest"],
-	"fs.mv": ["src", "dest"],
-	"fs.rm": ["path"],
-	"fs.touch": ["path"],
-	"fs.mkdir": ["path"],
-	"fs.rmdir": ["path"],
-	"fs.save": ["path"],
-	"fs.ls": ["path"]
-}
+from commands import write_to_log, load_conversation, list_conversations, save_conversation, execute_fs_command
+from config import SYSTEM_MESSAGE, COMMANDS_DICT, LOG_DIR, STORAGE_DIR, CONVERSATIONS_DIR
 
 # set your OpenAI API key
 # noinspection SpellCheckingInspection
 openai.api_key = "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"
-DATA_DIR = os.path.realpath(os.path.join(os.getcwd(), 'data'))
-LOG_DIR = os.path.join(DATA_DIR, 'logs')
+
 LOG_FILE = os.path.join(LOG_DIR, datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f") + ".txt")
-STORAGE_DIR = os.path.join(DATA_DIR, 'storage')
-CONVERSATIONS_DIR = os.path.join(DATA_DIR, 'conversations')
 conversation_name = 'conversation_' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
 prompt = ''
 response_count = 0
 logged_response_count = 0
 last_logged = {}
 # noinspection PyPep8
-SYSTEM_MESSAGE = '''Hello! You are an efficient assistant with the ability to interact with a custom python API. When sending a query or request, 
-create a valid JSON object to be parsed by the API. Regardless of the question, make sure to follow this structure in your answer. EVERY SINGLE RESPONSE SHOULD BE READABLE BY json.loads(json_response)
-The response create a valid JSON array of objects:
-	
-		"commands": [
-			{
-				"commandName": "SpecificCommand",
-				"parameters": {
-					"paramKey1": "value1",
-					"paramKey2": "value2",
-					// ... any additional parameters
-				}
-			},
-			// ... any additional command structures as needed
-		], 
-		"user": "Message or response meant for the user"
-	}
-	```
-	**Supported Commands:**
-	- **Conversation Commands:**
-	  - `conv.ls:{}`: Lists saved conversations.
-	  - `conv.load:{"name":"Conversation_Name_to_load"}`: Loads a specific saved conversation.
-	  - `conv.save:{"name":"Conversation_Name_to_save"}`: Saves the current conversation.
-- **File System Commands:** Note: use windows path format with backslash
-
-  - `fs.cat:{"path":"filename_to_display"}`: 
-	- Description: Displays the contents of the specified file.
-  
-  - `fs.cp:{"src":"source_filepath_or_dir","destination":"dest_filepath_or_dir"}`: 
-	- Description: Copies the source file or directory to the specified destination.
-  
-  - `fs.mv:{"src":"src_filepath_or_dir","dest":"dest_filepath_or_dir"}`: 
-	- Description: Moves or renames the source file or directory to the specified dest.
-  
-  - `fs.rm:{"path":"filename_to_remove", "recursive":true_or_false}`: 
-	- Description: Removes the specified file or directory. If "recursive" is set to true, it will recursively remove directories and their contents.
-  
-  - `fs.touch:{"path":"filename_to_create"}`: 
-	- Description: Creates a new empty file with the given filename.
-  
-  - `fs.mkdir:{"path":"actual_directory_name"}`: 
-	- Description: Creates a new directory in the storage space.
-  
-  - `fs.rmdir:{"path":"directory_name_to_remove"}`: 
-	- Description: Removes the specified directory. Note: This will only remove empty directories.
-  
-  - `fs.ls:{"path":"optional_path_here", "recursive":true_or_false}`: 
-	- Description: Lists contents in the storage directory or a specified path. If "recursive" is set to true, it lists all files and directories under the specified path recursively.
-  
-  - `fs.save:{"path":"actual_filename_to_save","data":"actual_data_to_save"}`: 
-	- Description: Saves provided data to the specified filename.
-
-	  example: {"commands": [{"command":"fs.save", "parameters":{"path":"folder_to_save_to\chat_gpt_saved_it_here.txt","data":"chatgpt saved this for me.txt"}],"user": "It has been saved!"}
-	  Regardless of the question, make sure to follow this structure in your answer. EVERY SINGLE RESPONSE SHOULD BE READABLE BY json.loads(json_response)
-	  locally, files are saved here: "''' + STORAGE_DIR + '". conversations are saved here: "' + CONVERSATIONS_DIR + '". only subdirectories of this the conversations and storage directories can be deleted. This conversation is named: ' + conversation_name
 
 # Ensure required directories exist
 for d in CONVERSATIONS_DIR, STORAGE_DIR, LOG_DIR:
@@ -224,8 +149,7 @@ def parse_and_execute_commands(response):
 		#      err_message='Error: python raised ' + str(type(e)) + str(e.args)
 
 		if was_error:
-			return {"error_message": err_message if was_error else "", "results": results,
-					"user_message": user_message, "return": return_gpt}
+			break
 
 		index += 1
 
@@ -282,103 +206,9 @@ def parse_filepath(*fps):
 	return retval
 
 
-def load_conversation(filename):
-	filepath = os.path.join('.', 'data', 'conversations', filename) + '.txt'
-	if os.path.exists(filepath):
-		with open(filepath, 'r') as file:
-			return file.read().strip()
-	else:
-		return f"Error: {filename} not found."
-
-
-def list_conversations():
-	return [conversation.replace('.txt', '') for conversation in os.listdir(CONVERSATIONS_DIR)]
-
-
-def save_conversation(filename):
-	filepath = os.path.join('.', 'data', 'conversations', filename + '.txt')
-	with open(filepath, 'w') as file:
-		file.write(prompt)
-	return f"Conversation saved as {filename}."
-
-
-def execute_fs_command(command, parameters):
-	recursive = parameters.get("recursive", "false")
-	recursive = str(recursive).lower() == "true"
-	path = parse_filepath(parameters.get("path", ''))
-	src = parse_filepath(parameters.get("src", ''))
-	dest = parse_filepath(parameters.get("dest", ''))
-	if command == "fs.cat":
-		path = os.path.join(STORAGE_DIR, path)
-		with open(path, 'r') as file:
-			return True, file.read()
-
-	elif command == "fs.cp":
-		src = os.path.join(STORAGE_DIR, src)
-		dest = os.path.join(STORAGE_DIR, dest)
-		if os.path.isdir(src):
-			shutil.copytree(src, dest)
-		else:
-			shutil.copy2(src, dest)
-		return False, f"Copied {parameters['src']} to {parameters['dest']}"
-
-	elif command == "fs.mv":
-		shutil.move(src, dest)
-		return False, f"Moved/Renamed {parameters['src']} to {parameters['dest']}"
-
-	elif command == "fs.rm":
-		if parse_filepath('storage', '') == path:
-			return True, 'Error: Cannot delete '
-		if not path.endswith('*'):
-			paths = [path]
-		else:
-			paths = os.listdir(os.path.dirname(path))
-		for child in paths:
-			if recursive and os.path.isdir(child):
-				shutil.rmtree(child)
-			else:
-				os.remove(child)
-
-		return False, f"Removed {parameters['path']}"
-
-	elif command == "fs.touch":
-		with open(path, 'a'):
-			os.utime(path, None)
-		return False, f"Created {parameters['path']}"
-
-	elif command == "fs.mkdir":
-		os.makedirs(path, exist_ok=True)
-		return False, f"Created directory {parameters['path']}"
-
-	elif command == "fs.rmdir":
-		if parse_filepath('storage', '') == path:
-			return 'Error: Cannot delete base directory.'
-		os.rmdir(path)  # Note: This will only remove empty directories.
-		return False, f"Removed directory {parameters['path']}"
-
-	elif command == "fs.ls":
-
-		path = parse_filepath('storage', parameters.get("path", ""))
-		if recursive:
-			all_files = []
-			for dirpath, dirnames, filenames in os.walk(path):
-				for fname in filenames:
-					all_files.append(os.path.join(dirpath, fname).replace(STORAGE_DIR, ''))
-			return True, all_files
-		else:
-			return True, os.listdir(path)
-
-	elif command == "fs.save":
-
-		with open(path, 'w') as file:
-			file.write(parameters["data"])
-		return False, f"Saved data to {parameters['path']}"
-
-	else:
-		return True, f"Error:Invalid command: {command}"
-
-
 def main():
+	"""
+	"""
 	parser = argparse.ArgumentParser(description="ChatGPT-4 Command Line Interface")
 	parser.add_argument("initial_prompt", type=str, help="Initial prompt for the model", default="", nargs='*')
 	args = parser.parse_args()
@@ -422,33 +252,6 @@ def main():
 		write_to_log(user_input=user_input, return_gpt=return_gpt, response=str(response), code_tag="end main loop")
 		save_conversation(conversation_name)
 
-
-def write_to_log(code_tag, user_input='', response='', **kwargs):
-	global prompt
-	global logged_response_count
-	global response_count
-	global last_logged
-	lines = {"code_tag": code_tag + '[' + str(response_count) + ']', "user_input": user_input,
-			 "prompt": '"' + repr(prompt.strip()) + '"',
-			 "response": response}
-	if logged_response_count == response_count:
-		ks = list(lines)
-		for k in ks:
-			if last_logged.get(k, '') == lines[k]:
-				del lines[k]
-			else:
-				last_logged[k] = lines[k]
-	else:
-		last_logged = lines
-	text = '\n'.join([key + ':' + str(var) for d in [lines, kwargs] for key, var in d.items() if var])
-	text += '\n\n'
-	if logged_response_count != response_count:
-		text = '\n' + '-' * 25 + '#' + str(response_count) + '\n'
-		last_logged = lines
-
-	with open(LOG_FILE, 'a') as file:
-		file.write(text)
-	logged_response_count = response_count
 
 if __name__ == "__main__":
 	main()
