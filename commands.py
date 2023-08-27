@@ -1,36 +1,22 @@
 import os
 import shutil
 
-from config import CONVERSATIONS_DIR, STORAGE_DIR
-from gpt import LOG_FILE, prompt, parse_filepath
+import config
 
 
-def write_to_log(code_tag, user_input='', response='', **kwargs):
-	global prompt
-	global logged_response_count
-	global response_count
-	global last_logged
-	lines = {"code_tag": code_tag + '[' + str(response_count) + ']', "user_input": user_input,
-			 "prompt": '"' + repr(prompt.strip()) + '"',
-			 "response": response}
-	if logged_response_count == response_count:
-		ks = list(lines)
-		for k in ks:
-			if last_logged.get(k, '') == lines[k]:
-				del lines[k]
-			else:
-				last_logged[k] = lines[k]
-	else:
-		last_logged = lines
-	text = '\n'.join([key + ':' + str(var) for d in [lines, kwargs] for key, var in d.items() if var])
-	text += '\n\n'
-	if logged_response_count != response_count:
-		text = '\n' + '-' * 25 + '#' + str(response_count) + '\n'
-		last_logged = lines
+def parse_filepath(*fps):
+	retval = ""
 
-	with open(LOG_FILE, 'a') as file:
-		file.write(text)
-	logged_response_count = response_count
+	if fps:
+		paths = fps
+		paths = [path2[:-1] if (path2 and path2[-1] in ['/', '\\']) else path2 for path2 in paths]
+		paths = [path2[1:] if path2 and path2[0] in ['/', '\\'] else path2 for path2 in paths]
+		paths = [path2 for path2 in paths if path2]
+
+		for fp in paths:
+			retval = os.path.join(retval, fp)
+		retval = os.path.realpath(retval)
+	return retval
 
 
 def load_conversation(filename):
@@ -43,7 +29,7 @@ def load_conversation(filename):
 
 
 def list_conversations():
-	return [conversation.replace('.txt', '') for conversation in os.listdir(CONVERSATIONS_DIR)]
+	return [conversation.replace('.txt', '') for conversation in os.listdir(config.CONVERSATIONS_DIR)]
 
 
 def save_conversation(filename):
@@ -66,13 +52,13 @@ def execute_fs_command(command, parameters):
 	src = parse_filepath(parameters.get("src", ''))
 	dest = parse_filepath(parameters.get("dest", ''))
 	if command == "fs.cat":
-		path = os.path.join(STORAGE_DIR, path)
+		path = os.path.join(config.STORAGE_DIR, path)
 		with open(path, 'r') as file:
 			return True, file.read()
 
 	elif command == "fs.cp":
-		src = os.path.join(STORAGE_DIR, src)
-		dest = os.path.join(STORAGE_DIR, dest)
+		src = os.path.join(config.STORAGE_DIR, src)
+		dest = os.path.join(config.STORAGE_DIR, dest)
 		if os.path.isdir(src):
 			shutil.copytree(src, dest)
 		else:
@@ -120,7 +106,7 @@ def execute_fs_command(command, parameters):
 			all_files = []
 			for dirpath, dirnames, filenames in os.walk(path):
 				for fname in filenames:
-					all_files.append(os.path.join(dirpath, fname).replace(STORAGE_DIR, ''))
+					all_files.append(os.path.join(dirpath, fname).replace(config.STORAGE_DIR, ''))
 			return True, all_files
 		else:
 			return True, os.listdir(path)

@@ -1,20 +1,17 @@
 import argparse
-import datetime
 import json
 import os
 import re
 
 import openai
 
-from commands import write_to_log, load_conversation, list_conversations, save_conversation, execute_fs_command
-from config import SYSTEM_MESSAGE, COMMANDS_DICT, LOG_DIR, STORAGE_DIR, CONVERSATIONS_DIR
+import commands
+import config
+from config import log_filename
 
 # set your OpenAI API key
 # noinspection SpellCheckingInspection
 openai.api_key = "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"
-
-LOG_FILE = os.path.join(LOG_DIR, datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f") + ".txt")
-conversation_name = 'conversation_' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
 prompt = ''
 response_count = 0
 logged_response_count = 0
@@ -22,10 +19,9 @@ last_logged = {}
 # noinspection PyPep8
 
 # Ensure required directories exist
-for d in CONVERSATIONS_DIR, STORAGE_DIR, LOG_DIR:
+for d in config.CONVERSATIONS_DIR, config.STORAGE_DIR, config.LOG_DIR:
 	if not os.path.exists(d):
 		os.makedirs(d)
-
 
 def interact_with_chatgpt():
 	global prompt
@@ -34,7 +30,7 @@ def interact_with_chatgpt():
 	messages = [
 		{
 			'role': 'system',
-			'content': SYSTEM_MESSAGE
+			'content': config.SYSTEM_MESSAGE
 		},
 		{
 			'role': 'user',
@@ -67,8 +63,8 @@ def interact_with_chatgpt():
 		return_gpt = executed_results["return"]
 
 	write_to_log(assistant_raw_response=assistant_raw_response, executed_results=executed_results,
-				 return_gpt=return_gpt,
-				 code_tag="after interact")
+	             return_gpt=return_gpt,
+	             code_tag="after interact")
 	# Return the results of the executed commands and the user message
 	return {
 		"command_results": command_results,
@@ -105,11 +101,11 @@ def parse_and_execute_commands(response):
 			if not isinstance(parameters, dict):
 				parameters = {str(parameters): ""}
 
-			if command not in COMMANDS_DICT:
+			if command not in config.COMMANDS_DICT:
 				err_message += f'Command not found: "{command}".\n'
 				was_error = True
 			else:
-				required_params = COMMANDS_DICT[command]
+				required_params = config.COMMANDS_DICT[command]
 				missing_params = [param for param in required_params if param not in parameters]
 
 				if missing_params:
@@ -119,21 +115,21 @@ def parse_and_execute_commands(response):
 			if not was_error:
 				# Execute the parsed commands
 				if command.startswith("fs."):
-					return_gpt, result = execute_fs_command(command, parameters)
+					return_gpt, result = commands.execute_fs_command(command, parameters)
 
 					if str(result).startswith('Error:'):
 						err_message = result
 						was_error = True
 
 				elif command == "conv.ls":
-					result = list_conversations()
+					result = commands.list_conversations()
 					return_gpt = True
 				elif command == "conv.load":
 					filename = parameters["name"].strip()
-					result = load_conversation(filename)
+					result = commands.load_conversation(filename)
 					return_gpt = True
 				elif command == "conv.save":
-					result = save_conversation(parameters["name"].strip())
+					result = commands.save_conversation(parameters["name"].strip())
 				else:
 					err_message += f'Invalid command: "{command}".\n'
 					was_error = True
@@ -154,7 +150,7 @@ def parse_and_execute_commands(response):
 		index += 1
 
 	return {"error_message": err_message if was_error else "", "results": results, "user_message": user_message,
-			"return": return_gpt}
+	        "return": return_gpt}
 
 
 def format_response(assistant_response):
@@ -191,19 +187,7 @@ def format_response(assistant_response):
 		}
 
 
-def parse_filepath(*fps):
-	retval = ""
 
-	if fps:
-		paths = fps
-		paths = [path2[:-1] if (path2 and path2[-1] in ['/', '\\']) else path2 for path2 in paths]
-		paths = [path2[1:] if path2 and path2[0] in ['/', '\\'] else path2 for path2 in paths]
-		paths = [path2 for path2 in paths if path2]
-
-		for fp in paths:
-			retval = os.path.join(retval, fp)
-		retval = os.path.realpath(retval)
-	return retval
 
 
 def main():
@@ -250,8 +234,35 @@ def main():
 
 		prompt += f"ChatGPT: {response['assistant_message']}\n"
 		write_to_log(user_input=user_input, return_gpt=return_gpt, response=str(response), code_tag="end main loop")
-		save_conversation(conversation_name)
+		commands.save_conversation(config.conversation_name)
 
+
+def write_to_log(code_tag, user_input='', response='', **kwargs):
+	global prompt
+	global logged_response_count
+	global response_count
+	global last_logged
+	lines = {"code_tag": code_tag + '[' + str(response_count) + ']', "user_input": user_input,
+	         "prompt": '"' + repr(prompt.strip()) + '"',
+	         "response": response}
+	if logged_response_count == response_count:
+		ks = list(lines)
+		for k in ks:
+			if last_logged.get(k, '') == lines[k]:
+				del lines[k]
+			else:
+				last_logged[k] = lines[k]
+	else:
+		last_logged = lines
+	text = '\n'.join([key + ':' + str(var) for d in [lines, kwargs] for key, var in d.items() if var])
+	text += '\n\n'
+	if logged_response_count != response_count:
+		text = '\n' + '-' * 25 + '#' + str(response_count) + '\n'
+		last_logged = lines
+
+	with open(log_filename, 'a') as file:
+		file.write(text)
+	logged_response_count = response_count
 
 if __name__ == "__main__":
 	main()

@@ -1,9 +1,13 @@
+import datetime
 import os
 
-from gpt import conversation_name
-
+DATA_DIR = os.path.realpath(os.path.join(os.getcwd(), 'data'))
 STORAGE_DIR = os.path.join(DATA_DIR, 'storage')
 CONVERSATIONS_DIR = os.path.join(DATA_DIR, 'conversations')
+LOG_DIR = os.path.join(DATA_DIR, 'logs')
+conversation_name = 'conversation_' + datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f")
+log_filename = os.path.join(LOG_DIR, datetime.datetime.now().strftime("%Y%m%d-%H%M%S.%f") + ".txt")
+
 SYSTEM_MESSAGE = '''Hello! You are an efficient assistant with the ability to interact with a custom python API. When sending a query or request, 
 create a valid JSON object to be parsed by the API. Regardless of the question, make sure to follow this structure in your answer. EVERY SINGLE RESPONSE SHOULD BE READABLE BY json.loads(json_response)
 The response create a valid JSON array of objects:
@@ -59,6 +63,7 @@ The response create a valid JSON array of objects:
 	  example: {"commands": [{"command":"fs.save", "parameters":{"path":"folder_to_save_to\chat_gpt_saved_it_here.txt","data":"chatgpt saved this for me.txt"}],"user": "It has been saved!"}
 	  Regardless of the question, make sure to follow this structure in your answer. EVERY SINGLE RESPONSE SHOULD BE READABLE BY json.loads(json_response)
 	  locally, files are saved here: "''' + STORAGE_DIR + '". conversations are saved here: "' + CONVERSATIONS_DIR + '". only subdirectories of this the conversations and storage directories can be deleted. This conversation is named: ' + conversation_name
+
 COMMANDS_DICT = {
 	# Conversation Commands
 	"conv.ls": [],
@@ -76,5 +81,3 @@ COMMANDS_DICT = {
 	"fs.save": ["path"],
 	"fs.ls": ["path"]
 }
-DATA_DIR = os.path.realpath(os.path.join(os.getcwd(), 'data'))
-LOG_DIR = os.path.join(DATA_DIR, 'logs')
