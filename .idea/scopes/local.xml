@@ -1,0 +1,3 @@
+<component name="DependencyValidationManager">
+  <scope name="local" pattern="file:*.py&amp;&amp;!file:commands_test.py" />
+</component>
