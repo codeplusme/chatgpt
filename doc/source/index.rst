@@ -2,11 +2,9 @@
 sphinx-quickstart on Sun Aug 27 14:33:45 2023.
 You can adapt this file completely to your liking, but it should at least
 contain the root `toctree` directive.
-
-Welcome to gpt's documentation!
 ===============================
 
-.. automodule:: gpt
+.. automodule:: main
     :members:
     :undoc-members:
 
@@ -20,7 +18,6 @@ Welcome to gpt's documentation!
 
 .. automodule:: log
     :members:
-
 
 Indices and tables
 ==================
